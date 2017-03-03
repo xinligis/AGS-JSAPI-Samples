@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>Max Points Draw in client</title>
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/dijit/themes/claro/claro.css">
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/esri/css/esri.css">
+    <style>
+        html, body, #map {
+            height:100%;
+            width:100%;
+            margin:0;
+            padding:0;
+        }
+    </style>
+    <script src="http://localhost:8080/agsjsapi/3.15/init.js"></script>
+    <script>
+        var map;
+
+        require([
+            "esri/map",
+            "esri/layers/ArcGISDynamicMapServiceLayer",
+            "esri/layers/FeatureLayer",
+            "esri/geometry/Extent",
+            "esri/geometry/Point",
+            "esri/geometry/Polygon",
+            "esri/symbols/SimpleLineSymbol",
+            "esri/symbols/SimpleFillSymbol",
+            "esri/symbols/SimpleMarkerSymbol",
+            "esri/graphic",
+            "esri/tasks/query", "esri/tasks/QueryTask",
+            "esri/InfoTemplate",
+            "dojo/dom",
+            "dojo/on",
+            "dojo/domReady!"
+        ], function(Map, ArcGISDynamicMapServiceLayer,FeatureLayer,
+                    Extent,Point,Polygon,
+                    SimpleLineSymbol,SimpleFillSymbol,
+                    SimpleMarkerSymbol, Graphic,
+                    Query,QueryTask,InfoTemplate,
+                    dom,on
+        ) {
+            map = new Map("map");
+            var baseLayer = new ArcGISDynamicMapServiceLayer("https://portal140.xinli.local/server/rest/services/continent/MapServer");
+            map.addLayer(baseLayer);
+
+            //以featurelayer加载
+            on(dom.byId("featurelayerBtn"),"click",function(){
+                var ftLayer = new FeatureLayer("https://portal140.xinli.local/server/rest/services/ship78447/MapServer/0");
+                 map.addLayer(ftLayer);
+            });
+
+            //前端绘制graphics
+            on(dom.byId("queryBtn"),"click",queryBtnHandler);
+            function queryBtnHandler(){
+                var query = new Query();
+                query.where = "1=1";
+                query.returnGeometry = true;
+                query.outFields = ["*"];
+                var queryTask = new QueryTask("https://portal140.xinli.local/server/rest/services/ship78447/MapServer/0");
+                queryTask.execute(query,function(featureSet){
+                    console.log("features总数："+featureSet.features.length);
+                    dom.byId("resultMsg").innerHTML = "总共查询出来条数："+featureSet.features.length;
+
+                    map.graphics.clear();
+                    var iCount = parseInt(dom.byId("numTxt").value);
+                    console.log("显示条数："+iCount);
+
+                    var sms = new SimpleMarkerSymbol("circle",10,null,new dojo.Color([0,0,255,0.5]));
+                    var infoTemplate = new InfoTemplate();
+                    infoTemplate.setContent("${*}");
+
+                    var i=0;
+                    for(i;i<iCount;i++){
+                        var feature = featureSet.features[i];
+                        feature.setSymbol(sms);
+                        feature.setInfoTemplate(infoTemplate);
+
+                        this.map.graphics.add(feature);
+                    }
+                });
+            }
+        });
+    </script>
+</head>
+<body class="claro">
+<div id="map">
+    <div style="top:80px;left:200px;">
+        <button id="featurelayerBtn" style="width: 200px;height:30px;">以FeatureLayer加载</button>
+        <button id="queryBtn" style="width: 100px;height:30px;">开始查询</button>
+        查：<input id="numTxt" type="text" value="4000">条，<label id="resultMsg">总共查询出来条数：</label>
+    </div>
+</div>
+</body>
+</html>

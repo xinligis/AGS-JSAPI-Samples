@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>以逗号隔开的方式输出点图层服务中的坐标和属性数据</title>
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/dijit/themes/tundra/tundra.css">
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/esri/css/esri.css">
+    <style>
+        html, body, #mapDiv {
+            height:100%;
+            width:100%;
+            margin:0;
+            padding:0;
+        }
+
+        #mapDiv{
+            position:relative;
+        }
+
+        div.toolbar{
+            position: absolute;
+            top:20px;
+            left:80px;
+            z-index:1000;
+        }
+
+        #mapserviceUrl{
+            width: 600px;
+        }
+        #gridNum{
+            width: 60px;
+        }
+
+        button{
+            height: 30px;
+            background-color: #41caff;
+            border:none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+    </style>
+    <script src="http://localhost:8080/agsjsapi/3.15/init.js"></script>
+    <script>
+        var map;
+        require([
+            "esri/map", "esri/layers/FeatureLayer","esri/layers/ArcGISTiledMapServiceLayer","esri/layers/ArcGISDynamicMapServiceLayer",
+            "esri/tasks/query", "esri/tasks/QueryTask","esri/geometry/Extent",
+            "esri/graphic", "esri/InfoTemplate", "esri/symbols/SimpleMarkerSymbol",
+            "esri/symbols/SimpleLineSymbol", "esri/symbols/SimpleFillSymbol", "esri/renderers/SimpleRenderer",
+            "esri/config", "esri/Color",
+            "dojo/dom", "dojo/on", "dojo/domReady!"
+        ], function(Map, FeatureLayer,ArcGISTiledMapServiceLayer,ArcGISDynamicMapServiceLayer,
+                Query, QueryTask,Extent,
+                Graphic, InfoTemplate, SimpleMarkerSymbol,
+                SimpleLineSymbol, SimpleFillSymbol, SimpleRenderer,
+                esriConfig, Color,
+                    dom, on) {
+            map = new Map("mapDiv", {
+                extent: new Extent({
+                    "xmin": 109.2865865,
+                    "ymin": 21.80798665,
+                    "xmax": 117.7012235,
+                    "ymax": 26.00506837,
+                    "spatialReference": {"wkid": 4326}
+                })
+            });
+
+            var tileLayerUrl = "http://portal140.xinli.local/server/rest/services/basemap/MapServer";
+            var tiledLayer = new ArcGISTiledMapServiceLayer(tileLayerUrl, {
+                id: "广东基础地图"
+            });
+            map.addLayer(tiledLayer);
+
+            var allFeatures = [];  //所有返回的features
+            var numCounts = [];    //所有请求返回的条数
+            on(dom.byId("queryBtn"),"click",queryBtnHandler);
+            function queryBtnHandler(){
+                var queryUrl = dom.byId("mapserviceUrl").value;
+
+                allFeatures = [];
+                numCounts = [];
+                map.graphics.clear();
+
+                //创建网格
+                var gridNum = parseInt(dom.byId("gridNum").value);
+                var extents = createGrids(map.extent.xmin,map.extent.ymin,map.extent.xmax,map.extent.ymax,gridNum);
+                var sls = new SimpleLineSymbol("solid", [128,128,128], 1.5);
+                var sfs = new SimpleFillSymbol("solid", sls, null);
+                //每个网格执行一个query查询
+                for(var i=0;i<extents.length;i++){
+                    var gp = new Graphic(extents[i],sfs);
+                    map.graphics.add(gp);
+
+                    var query = new Query();
+                    query.outFields = ["*"];
+                    query.where = "1=1";
+                    query.returnGeometry = true;
+                    query.geometry = extents[i];
+
+                    var queryTask = new QueryTask(queryUrl);
+                    queryTask.execute(query, function (featureSet) {
+                        console.log("query查询条数:"+featureSet.features.length);
+                        numCounts.push(featureSet.features.length);
+
+                        for(var j=0;j<featureSet.features.length;j++){
+                            var feature = featureSet.features[j];
+                            allFeatures.push(feature);
+                        }
+                     });
+                }
+            }
+
+            //输出所有查询结果
+            on(dom.byId("exportAllFeaturesBtn"),"click",exportAllFeaturesBtnHandler);
+            function exportAllFeaturesBtnHandler(){
+                var sum=0;
+                for(var k=0;k<numCounts.length;k++){
+                    sum += numCounts[k];
+                }
+                console.log("query返回的总个数："+sum);
+                console.log("返回的feature是总数："+allFeatures.length);
+
+                if(allFeatures.length>0){
+                    //输出key值
+                    var keyNames = "x,y,";
+                    for(var keyName in allFeatures[0].attributes){
+                        keyNames += keyName+",";
+                    }
+                    console.log(keyNames.substr(0,keyNames.length-1));
+                }
+
+                //输出所有的要素信息
+                for(var j=0;j<allFeatures.length;j++){
+                    var ptStrs = allFeatures[j].geometry.x+","+allFeatures[j].geometry.y+",";
+                    for(var key in allFeatures[j].attributes){
+                        ptStrs += allFeatures[j].attributes[key]+",";
+                    }
+
+                     console.log(ptStrs.substr(0,ptStrs.length-1));
+                }
+            }
+
+            //生成规则的网格
+            function createGrids(minx,miny,maxx,maxy,cellCount){
+                var stepX = (maxx - minx)/cellCount;
+                var stepY = (maxy - miny)/cellCount;
+
+                var extents = [];
+                for(var i=0;i<cellCount;i++){
+                    var newMinx = minx + i*stepX;
+                    var newMaxx = minx + (i+1)*stepX;
+                    for(var j=0;j<cellCount;j++){
+                        var newMiny = miny + j*stepY;
+                        var newMaxy = miny + (j+1)*stepY;
+
+                        var extent = new Extent(newMinx,newMiny,newMaxx,newMaxy);
+                        extents.push(extent);
+                    }
+                }
+
+                return extents;
+            }
+
+            //画网格
+            on(dom.byId("createGridsBtn"),"click",createGridsBtnHandler);
+            function createGridsBtnHandler(){
+                map.graphics.clear();
+
+                var extents = createGrids(map.extent.xmin,map.extent.ymin,map.extent.xmax,map.extent.ymax,parseInt(dom.byId("gridNum").value));
+                var sls = new SimpleLineSymbol("solid", [128,128,128], 1.5);
+                var sfs = new SimpleFillSymbol("solid", sls, null);
+                for(var i=0;i<extents.length;i++){
+                    var gp = new Graphic(extents[i],sfs);
+                    map.graphics.add(gp);
+                }
+            }
+        });
+    </script>
+</head>
+
+<body>
+<div id="mapDiv">
+    <div class="toolbar">
+        <label></label>
+        <label>地图服务地址（只支持点图层）：</label>
+        <input id="mapserviceUrl" value="http://portal140.xinli.local/server/rest/services/myService/MapServer/12"><br/>
+        <lable>网格行列数：</lable>
+        <input id="gridNum" value="4">
+        <button id="queryBtn">按网格查询Features</button>
+        <button id="exportAllFeaturesBtn">输出查询结果</button>
+        <button id="createGridsBtn">画网格测试</button>
+    </div>
+</div>
+</body>
+</html>

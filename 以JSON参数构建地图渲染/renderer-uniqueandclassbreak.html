@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>唯一值和分级渲染JSON定义</title>
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/esri/css/esri.css">
+    <style>
+        html, body, #map {
+            height: 100%; width: 100%; margin: 0; padding: 0;
+        }
+    </style>
+
+    <script src="http://localhost:8080/agsjsapi/3.15/init.js"></script>
+    <script>
+        var map;
+
+        require([
+            "esri/map",
+            "esri/geometry/Extent",
+            "esri/layers/FeatureLayer",
+            "esri/layers/ArcGISDynamicMapServiceLayer",
+            "esri/symbols/SimpleMarkerSymbol",
+            "esri/symbols/SimpleLineSymbol",
+            "esri/symbols/SimpleFillSymbol",
+            "esri/symbols/TextSymbol",
+            "esri/renderers/SimpleRenderer",
+            "esri/renderers/ClassBreaksRenderer",
+            "esri/renderers/UniqueValueRenderer",
+            "esri/layers/LabelClass",
+
+            "dojo/domReady!"
+        ], function(Map, Extent, FeatureLayer,ArcGISDynamicMapServiceLayer,
+                    SimpleMarkerSymbol,SimpleLineSymbol, SimpleFillSymbol,
+                    TextSymbol, SimpleRenderer,ClassBreaksRenderer,UniqueValueRenderer,LabelClass)
+        {
+            var bbox = new Extent({"xmin": -1940058, "ymin": -814715, "xmax": 1683105, "ymax": 1446096, "spatialReference": {"wkid": 102003}});
+
+            map = new Map("map", {
+                extent: bbox,
+                showLabels:true
+            });
+
+            //创建唯一值JSON，面填充符号
+            function createUniqueRendererJson(uniqueFieldName,uniqueValues,uniqueColors){
+                var rendererJson = {
+                    "type": "uniqueValue",
+                    "field1": uniqueFieldName,
+                    "defaultSymbol": {
+                        "color": uniqueColors[0],
+                        "type": "esriSFS",
+                        "style": "esriSFSSolid"
+                    },
+                    "uniqueValueInfos": []
+                };
+
+                var i=0;
+                for(i;i<uniqueValues.length;i++){
+                    var idx = 1+i;
+                    var obj = {
+                        "value": uniqueValues[i],
+                        "symbol": {
+                            "color": uniqueColors[idx],
+                            "type": "esriSFS",
+                            "style": "esriSFSSolid"
+                        }
+                    };
+
+                    rendererJson.uniqueValueInfos.push(obj);
+                }
+
+                return rendererJson;
+            }
+
+            //创建分级渲染JSON，点符号
+            function createClassbreakRendererJson(classbreakFieldName,classbreakValues,classbreakColors){
+                var rendererJson = {
+                    "type": "classBreaks",
+                    "field": classbreakFieldName,
+                    "defaultSymbol": {
+                        "color": classbreakColors[0],
+                        "size":12,
+                        "type": "esriSMS",
+                        "style": "esriSMSCircle"
+                    },
+                    "minValue": classbreakValues[0],
+                    "classBreakInfos": []
+                };
+
+                var i=1;
+                for(i;i<classbreakValues.length;i++){
+                    var obj = {
+                        "classMaxValue": classbreakValues[i],
+                        "symbol": {
+                            "color": classbreakColors[i],
+                            "size": 12,
+                            "type": "esriSMS",
+                            "style": "esriSMSCircle"
+                        }
+                    };
+
+                    rendererJson.classBreakInfos.push(obj);
+                }
+
+                return rendererJson;
+            }
+
+            var statesUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2";
+            var states = new FeatureLayer(statesUrl,{
+                outFields:["*"]
+            });
+            var uniqueJson = createUniqueRendererJson("sub_region",["Pacific","Mtn","W N Cen","Mid Atl"],[[128,128,128],[165,42,42],[30,144,255],[34,139,34],[255,215,0]]);
+            var uniqueRenderer = new UniqueValueRenderer(uniqueJson);
+            states.setRenderer(uniqueRenderer);
+
+            var labelJson = {
+                "labelExpressionInfo": {"value": "{sub_region}"},
+                "labelPlacement":"center-right",
+                "symbol":{
+                    "type": "esriTS",
+                    "color": [0,0,0],
+                    "font": {
+                        "family":"Microsoft YaHei",
+                        "size": 12
+                    }
+                }
+            };
+            var label = new LabelClass(labelJson);
+            states.setLabelingInfo([label]);
+            states.setShowLabels(true);
+            map.addLayer(states);
+
+            var citiesUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0";
+            var citiesLayer = new FeatureLayer(citiesUrl,{
+                outFields: ["*"]
+            });
+            var classbreaksRenderer = new ClassBreaksRenderer(createClassbreakRendererJson("pop2000",[10000,30000,50000,80000,100000,200000],[[128,128,128],[178,34,34],[218,165,32],[50,205,50],[0,191,255],[123,104,238]]));
+            citiesLayer.setRenderer(classbreaksRenderer);
+            map.addLayer(citiesLayer);
+        });
+    </script>
+</head>
+<body>
+<div id="map"></div>
+</body>
+</html>

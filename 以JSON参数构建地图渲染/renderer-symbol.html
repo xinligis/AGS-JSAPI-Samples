@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>点、线、面、文字符号JSON定义</title>
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/esri/css/esri.css">
+    <style>
+        html, body, #map {
+            height: 100%; width: 100%; margin: 0; padding: 0;
+        }
+    </style>
+
+    <script src="http://localhost:8080/agsjsapi/3.15/init.js"></script>
+    <script>
+        var map;
+
+        require([
+            "esri/map",
+            "esri/geometry/Extent",
+            "esri/layers/FeatureLayer",
+            "esri/layers/ArcGISDynamicMapServiceLayer",
+            "esri/symbols/SimpleMarkerSymbol",
+            "esri/symbols/SimpleLineSymbol",
+            "esri/symbols/SimpleFillSymbol",
+            "esri/symbols/TextSymbol",
+            "esri/renderers/SimpleRenderer",
+
+            "dojo/domReady!"
+        ], function(Map, Extent, FeatureLayer,ArcGISDynamicMapServiceLayer,
+                    SimpleMarkerSymbol,SimpleLineSymbol, SimpleFillSymbol,
+                    TextSymbol, SimpleRenderer)
+        {
+            var bbox = new Extent({"xmin": -1940058, "ymin": -814715, "xmax": 1683105, "ymax": 1446096, "spatialReference": {"wkid": 102003}});
+
+            map = new Map("map", {
+                extent: bbox
+            });
+
+            //点符号
+            var sms = new SimpleMarkerSymbol({
+                "color": [0, 0, 255],
+                "size": 14,
+                "type": "esriSMS",
+                "style": "esriSMSCircle",
+                "outline": {
+                    "color":[255, 0, 0],
+                    "width":1,
+                    "type":"esriSLS",
+                    "style":"esriSLSSolid"
+                }
+            });
+            //面符号
+            var sfs = new SimpleFillSymbol({
+                "color": [0, 255, 0, 128],
+                "type": "esriSFS",
+                "style": "esriSFSSolid",
+                "outline": {
+                    "color": [128, 128, 128, 255],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                }
+            });
+            var citiesRenderer = new SimpleRenderer(sms);
+            var statesRenderer = new SimpleRenderer(sfs);
+
+            var statesUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2";
+            var states = new FeatureLayer(statesUrl);
+            states.setRenderer(statesRenderer);
+            map.addLayer(states);
+
+            var citiesUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2";
+            var citiesLayer = new FeatureLayer(citiesUrl);
+            citiesLayer.setRenderer(citiesRenderer);
+            map.addLayer(citiesLayer);
+
+        });
+    </script>
+</head>
+<body>
+<div id="map"></div>
+</body>
+</html>

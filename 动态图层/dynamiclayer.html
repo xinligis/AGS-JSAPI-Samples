@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>动态图层功能测试</title>
+    <link rel="stylesheet" href="https://portal140.xinli.local/portal/jsapi/jsapi/dijit/themes/claro/claro.css">
+    <link rel="stylesheet" href="https://portal140.xinli.local/portal/jsapi/jsapi/esri/css/esri.css">
+    <style>
+        html, body, #map {
+            height:100%;
+            width:100%;
+            margin:0;
+            padding:0;
+        }
+        div.toolbar{
+            margin:0 auto;
+            width: 1000px;
+        }
+        button{
+            margin:5px 0;
+            height:30px;
+            font-size: 14px;
+            font-family: "Microsoft YaHei";
+        }
+    </style>
+    <script src="https://portal140.xinli.local/portal/jsapi/jsapi/init.js"></script>
+    <script>
+        var map;
+        var dynamicLayerInfos;
+        var dynamicLayerDetails=[];  //记录新添加的图层信息，包括id,name,geometrytype
+        var drawingOptions=[];
+
+        require([
+            "esri/Color",
+            "esri/map",
+            "esri/layers/ArcGISDynamicMapServiceLayer",
+            "esri/layers/FeatureLayer",
+            "esri/layers/DynamicLayerInfo",
+            "esri/layers/QueryDataSource",
+            "esri/layers/TableDataSource",
+            "esri/layers/JoinDataSource",
+            "esri/layers/LayerDataSource",
+            "esri/layers/LayerDrawingOptions",
+            "esri/layers/LayerMapSource",
+            "esri/layers/LabelClass",
+            "esri/geometry/Extent",
+            "esri/geometry/Point",
+            "esri/geometry/Polygon",
+            "esri/symbols/SimpleLineSymbol",
+            "esri/symbols/SimpleFillSymbol",
+            "esri/symbols/SimpleMarkerSymbol",
+            "esri/symbols/PictureMarkerSymbol",
+            "esri/symbols/TextSymbol",
+            "esri/renderers/SimpleRenderer",
+            "esri/renderers/UniqueValueRenderer",
+            "esri/renderers/ClassBreaksRenderer",
+            "esri/graphic",
+            "esri/tasks/query", "esri/tasks/QueryTask",
+            "esri/InfoTemplate",
+            "esri/request",
+            "esri/tasks/ClassBreaksDefinition", "esri/tasks/AlgorithmicColorRamp",
+            "esri/tasks/GenerateRendererParameters", "esri/tasks/GenerateRendererTask",
+            "dojo/dom",
+            "dojo/on",
+            "dojo/domReady!"
+        ], function(Color,Map, ArcGISDynamicMapServiceLayer,FeatureLayer,
+                    DynamicLayerInfo,QueryDataSource,TableDataSource,JoinDataSource,LayerDataSource,LayerDrawingOptions,LayerMapSource,
+                    LabelClass, Extent,Point,Polygon,
+                    SimpleLineSymbol,SimpleFillSymbol,SimpleMarkerSymbol,PictureMarkerSymbol,TextSymbol,
+                    SimpleRenderer,UniqueValueRenderer,ClassBreaksRenderer, Graphic,
+                    Query,QueryTask,InfoTemplate,esriRequest,
+                    ClassBreaksDefinition,AlgorithmicColorRamp,GenerateRendererParameters,GenerateRendererTask,
+                    dom,on
+        ) {
+            map = new Map("map",{
+                center:[110.12687,31.11296]
+            });
+
+            var baseLayer = new ArcGISDynamicMapServiceLayer("http://portal140.xinli.local/server/rest/services/worldcities/MapServer");
+            map.addLayer(baseLayer);
+
+            baseLayer.on("load",function(){
+                //该方法只会返回原地图服务中包含的图层，动态的加不会算在内。
+                dynamicLayerInfos = baseLayer.createDynamicLayerInfosFromLayerInfos();
+            });
+
+            //生成随机颜色
+            function randomColor(){
+                var colorStr=Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase();
+                return new Color("#"+"000000".substring(0,6-colorStr)+colorStr);
+            }
+
+            //根据几何类型创建点、线、面符号
+            function createSymbol(geometryType){
+                var symbol = null;
+                switch(geometryType){
+                    case "esriGeometryPoint":
+                        symbol = new SimpleMarkerSymbol("circle",12,null,randomColor());
+                        break;
+                    case "esriGeometryPolyline":
+                        symbol = new SimpleLineSymbol("solid", randomColor(), 1.5);
+                        break;
+                    case "esriGeometryPolygon":
+                        symbol = new SimpleFillSymbol("solid", new SimpleLineSymbol("solid", randomColor(), 1),randomColor());
+                        break;
+                    default:
+                        break;
+                }
+
+                return symbol;
+            }
+
+            function printMsg(layerInfos){
+                console.log("总个数："+ layerInfos.length);
+                for(var i=0;i<layerInfos.length;i++){
+                    console.log("图层ID："+layerInfos[i].id+",名称："+layerInfos[i].name);
+                }
+            }
+
+            //定义动态图层信息，需要关联一种数据源类型（TableDataSource，QueryDataSource，JoinDataSource，RasterDataSource）
+            //以featurelayer加载动态图层，加载完成可对featurelayer执行query操作。
+            //备注：query中会增加layer参数，该参数值与restURL/dynamicLayer中传入的layer值一样。
+            on(dom.byId("showAsFtLayerBtn"),"click",showAsFtLayerBtnHandler);
+            function showAsFtLayerBtnHandler(){
+                var workspaceId = "FGDBWorkspace1224";
+                var layerName = dom.byId("dynamicLayers").value;
+                console.log("当前增加的图层名："+layerName);
+
+                //定义一种数据源
+                //1.TableDataSource
+                var tableDS = new TableDataSource();
+                tableDS.workspaceId = workspaceId;
+                tableDS.dataSourceName = layerName;
+                //2.定义动态图层数据
+                var layerSource = new LayerDataSource();
+                layerSource.dataSource = tableDS;
+                //3.以featurelayer来加载，支持在此基础上的query操作。注意url地址
+                var featureLayer = new FeatureLayer("http://portal140.xinli.local/server/rest/services/worldcities/MapServer/dynamicLayer", {
+                    id:layerName,
+                    mode: FeatureLayer.MODE_ONDEMAND,
+                    outFields: ["*"],
+                    infoTemplate: new InfoTemplate(tableDS.dataSourceName,"${*}"),
+                    source: layerSource
+                });
+                map.addLayer(featureLayer);
+
+                //设置图层渲染
+                featureLayer.on("load",function(){
+                    var renderer = new SimpleRenderer(createSymbol(featureLayer.geometryType));
+                    featureLayer.setRenderer(renderer);
+                })
+            }
+
+            //移除添加的FeatureLayer
+            on(dom.byId("removeFtLayerBtn"),"click",removeFtLayerBtnHandler);
+            function removeFtLayerBtnHandler(){
+                var layer = map.getLayer(dom.byId("dynamicLayers").value);
+                if(layer){
+                    map.removeLayer(layer);
+                }
+            }
+
+            //将动态图层添加原动态地图服务中
+            on(dom.byId("showAsDynamicLayerBtn"),"click",showAsDynamicLayerBtnHandler);
+            function showAsDynamicLayerBtnHandler(){
+                var workspaceId = "FGDBWorkspace1224";
+                var layerName = dom.byId("dynamicLayers").value;
+                console.log("当前增加的图层名："+layerName);
+
+                //定义一种数据源
+                //1.TableDataSource
+                var tableDS = new TableDataSource();
+                tableDS.workspaceId = workspaceId;
+                tableDS.dataSourceName = layerName;
+                //2.定义动态图层数据
+                var layerSource = new LayerDataSource();
+                layerSource.dataSource = tableDS;
+                //3.更新到现有的dynamicmapservicelayer中
+                console.log("加载前：");
+                printMsg(dynamicLayerInfos);
+                var dynamicLayerInfo = new DynamicLayerInfo();
+                dynamicLayerInfo.id = dynamicLayerInfos.length;
+                dynamicLayerInfo.name = layerName;
+                dynamicLayerInfo.source = layerSource;
+
+                dynamicLayerInfos.splice(0,0,dynamicLayerInfo);  //将新加的图层添加在数组最前面，在地图中会绘制在最上面。
+                baseLayer.setDynamicLayerInfos(dynamicLayerInfos);
+                console.log("加载后：");
+                printMsg(dynamicLayerInfos);
+
+                //根据图层几何类型设置符号
+                var dynamicLayerUrl = baseLayer.url + "/dynamicLayer";
+                var layerJson = {
+                    "source":layerSource.toJson()
+                };
+                var layersRequest = esriRequest({
+                    url: dynamicLayerUrl,
+                    content: {
+                        layer:JSON.stringify(layerJson),
+                        f: "json"
+                    },
+                    handleAs: "json",
+                    callbackParamName: "callback"
+                });
+                layersRequest.then(function(response) {
+                    console.log("Success: ", response.geometryType);
+
+                    var lyrDrawingOptions = new LayerDrawingOptions();
+                    lyrDrawingOptions.renderer = new SimpleRenderer(createSymbol(response.geometryType));
+
+                    //图层ID
+                    var layerId = dynamicLayerInfos.length-1;
+                    drawingOptions[layerId] = lyrDrawingOptions;
+                    baseLayer.setLayerDrawingOptions(drawingOptions);
+
+                    //记录动态添加的图层信息，方便后面处理
+                    dynamicLayerDetails[layerId] = {
+                        "layerId":layerId,
+                        "layerName":layerName,
+                        "geometryType":response.geometryType
+                    };
+                }, function(error) {
+                    console.log("Error: ", error.message);
+                });
+            }
+
+            //移除添加到地图服务中的图层
+            on(dom.byId("removeDynamicLayerBtn"),"click",removeDynamicLayerBtnHandler);
+            function removeDynamicLayerBtnHandler(){
+                var idx = 0;
+                for(idx in dynamicLayerInfos){
+                    if(dynamicLayerInfos[idx].name == dom.byId("dynamicLayers").value){
+                        //维护自定义的数组
+                        var layerId = dynamicLayerInfos[idx].id;
+                        dynamicLayerDetails.splice(layerId,1);
+                        drawingOptions.splice(layerId,1);
+
+                        //移除动态添加的图层
+                        dynamicLayerInfos.splice(idx,1);
+                        baseLayer.setDynamicLayerInfos(dynamicLayerInfos);
+
+                        break;
+                    }
+                }
+            }
+
+            //更改动态图层的符号
+            on(dom.byId("updateSymbolBtn"),"click",updateSymbolBtnHandler);
+            function updateSymbolBtnHandler(){
+                var idx = 0;
+                for(idx in dynamicLayerInfos){
+                    if(dynamicLayerInfos[idx].name == dom.byId("dynamicLayers").value){
+                        var layerId = dynamicLayerInfos[idx].id;
+
+                        var lyrDrawingOptions = new LayerDrawingOptions();
+                        lyrDrawingOptions.renderer = new SimpleRenderer(createSymbol(dynamicLayerDetails[layerId].geometryType));
+
+                        //测试其他符号(不支持)
+                        /*var svgSymbol = new SimpleMarkerSymbol("path",12,null,randomColor());
+                        svgSymbol.setPath("M0 32h16v-32h-16v32zM10 4h4v4h-4v-4zM10 12h4v4h-4v-4zM10 20h4v4h-4v-4zM2 4h4v4h-4v-4zM2 12h4v4h-4v-4zM2 20h4v4h-4v-4zM18 10h14v2h-14zM18 32h4v-8h6v8h4v-18h-14z");
+                        var picSms = new PictureMarkerSymbol("school_bus.png",12,12);
+                        lyrDrawingOptions.renderer = new SimpleRenderer(picSms);*/
+
+                        //设置标注
+                        var lblClass = new LabelClass({
+                            labelExpression: "\"OID:\" CONCAT [OBJECTID]",
+                            labelPlacement: 'always-horizontal',
+                            symbol:{
+                                "type": "esriTS",
+                                "color": [0,0,0],
+                                "haloColor":[245,245,245],
+                                "haloSize":1,
+                                "font": {
+                                    "family":"Microsoft YaHei",
+                                    "size": "14px"
+                                }
+                            }
+                        });
+                        lyrDrawingOptions.labelingInfo = [lblClass];
+                        lyrDrawingOptions.showLabels = true;
+
+                        drawingOptions[layerId] = lyrDrawingOptions;
+                        baseLayer.setLayerDrawingOptions(drawingOptions);
+
+                        break;
+                    }
+                }
+
+                console.log("更改符号的图层ID："+layerId);
+                printMsg(dynamicLayerInfos);
+                console.log("图层渲染信息："+baseLayer.layerDrawingOptions);
+            }
+
+            //更改原地图服务中图层的符号，使用唯一值渲染
+            on(dom.byId("updateContinentSymbolBtn"),"click",updateContinentSymbolBtnHandler);
+            function updateContinentSymbolBtnHandler(){
+                var layerId = parseInt(dom.byId("mapServiceLayers").value);
+
+                var renderer = new UniqueValueRenderer(createSymbol("esriGeometryPolygon"),"CONTINENT");
+                renderer.addValue("Africa",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("Antarctica",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("Asia",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("Australia",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("Europe",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("Oceania",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("South America",createSymbol("esriGeometryPolygon"));
+                renderer.addValue("North America",createSymbol("esriGeometryPolygon"));
+
+                //更改渲染
+                var lyrDrawingOptions = new LayerDrawingOptions();
+                lyrDrawingOptions.renderer = renderer;
+                //设置标注，labelExpression不能有中文，另外附加文字必须使用\"
+                var lblClass = new LabelClass({
+                    labelExpression: "\"name:\" CONCAT [CONTINENT]",
+                    labelPlacement: "always-horizontal",
+                    symbol:{
+                        "type": "esriTS",
+                        "color": [255,0,0],
+                        "haloColor":[245,245,245],
+                        "haloSize":1,
+                        "font": {
+                            "family":"Microsoft YaHei",
+                            "size": "14px"
+                        }
+                    }
+                });
+                lyrDrawingOptions.labelingInfo = [lblClass];
+                lyrDrawingOptions.showLabels = true;
+
+                drawingOptions[layerId] = lyrDrawingOptions;
+                baseLayer.setLayerDrawingOptions(drawingOptions);
+            }
+
+            //更改原地图服务中图层的符号，使用分级渲染(SVG符号，图片符号)，不支持？？？
+            on(dom.byId("updateCitiesSymbolBtn"),"click",updateCitiesSymbolBtnHandler);
+            function updateCitiesSymbolBtnHandler(){
+                //cities图层
+                var layerId = 0;
+
+                //不支持svg和picture符号
+                var svgSymbol = new SimpleMarkerSymbol("path",12,null,randomColor());
+                svgSymbol.setPath("M0 32h16v-32h-16v32zM10 4h4v4h-4v-4zM10 12h4v4h-4v-4zM10 20h4v4h-4v-4zM2 4h4v4h-4v-4zM2 12h4v4h-4v-4zM2 20h4v4h-4v-4zM18 10h14v2h-14zM18 32h4v-8h6v8h4v-18h-14z");
+                var picSms = new PictureMarkerSymbol("school_bus.png",12,12);
+
+                var renderer = new ClassBreaksRenderer(createSymbol("esriGeometryPoint"),"POP");
+                renderer.addBreak(10, 50000, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(50000, 100000, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(100000, 250000, svgSymbol);
+                renderer.addBreak(250000, 500000, svgSymbol);
+                renderer.addBreak(500000, 1000000, svgSymbol);
+                renderer.addBreak(1000000, 5000000, picSms);
+                renderer.addBreak(5000000, 10000000,picSms);
+
+                //更改渲染
+                var lyrDrawingOptions = new LayerDrawingOptions();
+                lyrDrawingOptions.renderer = renderer;
+                drawingOptions[layerId] = lyrDrawingOptions;
+                baseLayer.setLayerDrawingOptions(drawingOptions);
+            }
+
+            //第三种数据源：JoinDataSource
+            //动态关联动态图层和动态表，并使用表中的字段渲染地图
+            on(dom.byId("addDynamicJoinBtn"),"click",dynamicJoinBtnHandler);
+            function dynamicJoinBtnHandler(){
+                var workspaceId = "FGDBWorkspace1224";
+
+                //根据左边数据源类型返回一致的结果数据类型，表即返回表，图层即返回图层。
+                //1.定义关联关系的数据源(数据源都来自动态图层)
+                var joinDS = new JoinDataSource({
+                    joinType: "left-inner-join",
+                    leftTableSource: new LayerDataSource({
+                        dataSource:new TableDataSource({
+                            type:"table",
+                            workspaceId: workspaceId,
+                            dataSourceName: "地市级行政中心"
+                        })
+                    }),
+                    rightTableSource: new LayerDataSource({
+                        dataSource:new TableDataSource({
+                            type:"table",
+                            workspaceId: workspaceId,
+                            dataSourceName: "rain"
+                        })
+                    }),
+                    leftTableKey: "OBJECTID",
+                    rightTableKey: "ID"
+                });
+                //2.定义Layer数据源
+                var layerSource = new LayerDataSource();
+                layerSource.dataSource = joinDS;
+                //3.更新到现有的dynamicmapservicelayer中
+                var dynamicLayerInfo = new DynamicLayerInfo();
+                dynamicLayerInfo.id = dynamicLayerInfos.length;
+                dynamicLayerInfo.name = "JOIN图层和表";
+                dynamicLayerInfo.source = layerSource;
+
+                dynamicLayerInfos.splice(0,0,dynamicLayerInfo);  //将新加的图层添加在数组最前面，在地图中会绘制在最上面。
+                baseLayer.setDynamicLayerInfos(dynamicLayerInfos);
+                console.log("join关联后：");
+                printMsg(dynamicLayerInfos);
+
+                //4.定义渲染方式：分级渲染(未出现渲染效果)
+                /*var renderer = new ClassBreaksRenderer(createSymbol("esriGeometryPoint"),"rain.STAZT");
+                renderer.addBreak(0.8, 50.2, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(50.2, 100.5, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(100.5, 200.6, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(200.6, 800.4, createSymbol("esriGeometryPoint"));*/
+
+                //4.定义渲染方式：唯一值渲染渲染（测试通过）
+                var renderer = new UniqueValueRenderer(createSymbol("esriGeometryPoint"),"地市级行政中心.ADCLASS");
+                renderer.addValue("1",createSymbol("esriGeometryPoint"));
+                renderer.addValue("2",createSymbol("esriGeometryPoint"));
+                renderer.addValue("3",createSymbol("esriGeometryPoint"));
+                renderer.addValue("9",createSymbol("esriGeometryPoint"));
+                /*var renderer = new UniqueValueRenderer(createSymbol("esriGeometryPoint"),"rain.PROVINCE");
+                renderer.addValue("内蒙古",createSymbol("esriGeometryPoint"));
+                renderer.addValue("黑龙江",createSymbol("esriGeometryPoint"));
+                renderer.addValue("吉林",createSymbol("esriGeometryPoint"));
+                renderer.addValue("北京",createSymbol("esriGeometryPoint"));
+                renderer.addValue("新疆",createSymbol("esriGeometryPoint"));*/
+
+                //更改渲染
+                var lblClass = new LabelClass({
+                    labelExpression: "[rain.STAZT]",
+                    labelPlacement: "center-right",
+                    symbol:{
+                        "type": "esriTS",
+                        "color": [255,0,0],
+                        "haloColor":[245,245,245],
+                        "haloSize":1,
+                        "font": {
+                            "family":"Microsoft YaHei",
+                            "size": "14px"
+                        }
+                    }
+                });
+                var layerId = dynamicLayerInfos.length-1;  //图层ID以加入顺序递增
+                var lyrDrawingOptions = new LayerDrawingOptions();
+                lyrDrawingOptions.labelingInfo = [lblClass];
+                lyrDrawingOptions.showLabels = true;
+                lyrDrawingOptions.renderer = renderer;
+                drawingOptions[layerId] = lyrDrawingOptions;
+                baseLayer.setLayerDrawingOptions(drawingOptions);
+
+                //测试通过
+                /*var colorRamp = new AlgorithmicColorRamp();
+                colorRamp.fromColor = Color.fromHex("#998ec3");
+                colorRamp.toColor = Color.fromHex("#f1a340");
+                colorRamp.algorithm = "hsv";
+                var classDef = new ClassBreaksDefinition();
+                classDef.classificationField = "rain.RAIN";
+                classDef.classificationMethod = "quantile";
+                classDef.breakCount = 5;
+                classDef.baseSymbol = createSymbol("esriGeometryPoint");
+                classDef.colorRamp = colorRamp;
+                console.log("classBreaksDefinition:"+JSON.stringify(classDef.toJson()));
+                var params = new GenerateRendererParameters();
+                params.classificationDefinition = classDef;
+                params.where = "1=1";
+                var dynamicLayerUrl = "http://portal140.xinli.local/server/rest/services/worldcities/MapServer/dynamicLayer";
+                var generateRendererTask = new GenerateRendererTask(dynamicLayerUrl, {"source":layerSource});
+                var generateRendererDefer = generateRendererTask.execute(params);
+                var layerId = dynamicLayerInfos.length-1;
+                generateRendererDefer.then(function(renderer){
+                    var layerDrawingOption = new LayerDrawingOptions();
+                    layerDrawingOption.renderer = renderer;
+                    drawingOptions[layerId] = layerDrawingOption;
+                    baseLayer.setLayerDrawingOptions(drawingOptions);
+                });*/
+            }
+
+            //第三种数据源：JoinDataSource
+            //使用现有地图服务中的图层与动态表关联，并按表中的数据渲染地图
+            on(dom.byId("addDynamicTableJoinBtn"),"click",dynamicTableJoinBtnHandler);
+            function dynamicTableJoinBtnHandler(){
+                var workspaceId = "FGDBWorkspace1224";
+
+                //1.定义关联关系的数据源(左数据源都来自服务中的图层，右数据源来自动态图层)
+                var joinDS = new JoinDataSource({
+                    type: "joinTable",
+                    joinType: "left-inner-join",
+                    leftTableSource: new LayerMapSource({
+                        type: "mapLayer",
+                        mapLayerId: 0
+                    }),
+                    rightTableSource: new LayerDataSource({
+                        dataSource:new TableDataSource({
+                            type:"table",
+                            workspaceId: workspaceId,
+                            dataSourceName: "rain"
+                        })
+                    }),
+                    leftTableKey: "OBJECTID",
+                    rightTableKey: "ID"
+                });
+                //2.定义Layer数据源
+                var layerSource = new LayerDataSource();
+                layerSource.dataSource = joinDS;
+                //3.更新到现有的dynamicmapservicelayer中
+                var dynamicLayerInfo = new DynamicLayerInfo();
+                dynamicLayerInfo.id = dynamicLayerInfos.length;
+                dynamicLayerInfo.name = "JOIN服务图层和表";
+                dynamicLayerInfo.source = layerSource;
+
+                dynamicLayerInfos.splice(0,0,dynamicLayerInfo);  //将新加的图层添加在数组最前面，在地图中会绘制在最上面。
+                baseLayer.setDynamicLayerInfos(dynamicLayerInfos);
+                console.log("join关联后：");
+                printMsg(dynamicLayerInfos);
+
+                //4.定义渲染方式：分级渲染（测试通过）
+                var renderer = new ClassBreaksRenderer(createSymbol("esriGeometryPoint"),"rain.STAZT");
+                renderer.addBreak(10, 50, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(50, 100, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(100, 200, createSymbol("esriGeometryPoint"));
+                renderer.addBreak(200, Infinity, createSymbol("esriGeometryPoint"));
+
+                //5.定义渲染方式：唯一值渲染渲染（测试通过）
+                /*var renderer = new UniqueValueRenderer(createSymbol("esriGeometryPoint"),"rain.PROVINCE");
+                 renderer.addValue("内蒙古",createSymbol("esriGeometryPoint"));
+                 renderer.addValue("黑龙江",createSymbol("esriGeometryPoint"));
+                 renderer.addValue("吉林",createSymbol("esriGeometryPoint"));
+                 renderer.addValue("北京",createSymbol("esriGeometryPoint"));
+                 renderer.addValue("新疆",createSymbol("esriGeometryPoint"));*/
+
+                var lblClass = new LabelClass({
+                    labelExpression: "[rain.STAZT]",
+                    labelPlacement: "center-right",
+                    symbol:{
+                        "type": "esriTS",
+                        "color": [255,0,0],
+                        "haloColor":[245,245,245],
+                        "haloSize":1,
+                        "font": {
+                            "family":"Microsoft YaHei",
+                            "size": "14px"
+                        }
+                    }
+                });
+                var layerId = dynamicLayerInfos.length-1;  //图层ID以加入顺序递增
+                var lyrDrawingOptions = new LayerDrawingOptions();
+                lyrDrawingOptions.labelingInfo = [lblClass];
+                lyrDrawingOptions.showLabels = true;
+                lyrDrawingOptions.renderer = renderer;
+                drawingOptions[layerId] = lyrDrawingOptions;
+                baseLayer.setLayerDrawingOptions(drawingOptions);
+            }
+        });
+    </script>
+</head>
+<body class="claro">
+<div class="toolbar">
+    动态图层：
+    <select id="dynamicLayers">
+        <option value="国界P">国界</option>
+        <option value="省界P">省界</option>
+        <option value="一级河流L">一级河流</option>
+        <option value="三级河流L">三级河流</option>
+        <option value="省级行政中心">省级行政中心</option>
+        <option value="地市级行政中心">地市级行政中心</option>
+    </select>
+    <br/>
+    <button id="showAsFtLayerBtn">以FeatureLayer增加动态图层</button>
+    <button id="removeFtLayerBtn">移除FeatureLayer</button>
+    <button id="showAsDynamicLayerBtn">增加到原地图服务中</button>
+    <button id="removeDynamicLayerBtn">移除DynamicLayer</button>
+    <button id="updateSymbolBtn">更改动态图层符号</button><br/>
+    地图服务中的图层：
+    <select id="mapServiceLayers">
+        <option value="1">continent</option>
+    </select>
+    <button id="updateContinentSymbolBtn">更改地图服务中自带图层的符号</button>
+    <button id="updateCitiesSymbolBtn">更改地图服务中自带图层的符号（SVG）</button>
+    <button id="addDynamicJoinBtn">动态图层与表间关联</button>
+    <button id="addDynamicTableJoinBtn">服务图层与表间关联</button>
+</div>
+<div id="map">
+</div>
+</body>
+</html>

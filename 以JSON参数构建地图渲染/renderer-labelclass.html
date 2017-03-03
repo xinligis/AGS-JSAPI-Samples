@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>图层动态标注JSON定义</title>
+    <link rel="stylesheet" href="http://localhost:8080/agsjsapi/3.15/esri/css/esri.css">
+    <style>
+        html, body, #map {
+            height: 100%; width: 100%; margin: 0; padding: 0;
+        }
+    </style>
+
+    <script src="http://localhost:8080/agsjsapi/3.15/init.js"></script>
+    <script>
+        var map;
+
+        require([
+            "esri/map",
+            "esri/geometry/Extent",
+            "esri/layers/FeatureLayer",
+            "esri/layers/ArcGISDynamicMapServiceLayer",
+            "esri/symbols/SimpleMarkerSymbol",
+            "esri/symbols/SimpleLineSymbol",
+            "esri/symbols/SimpleFillSymbol",
+            "esri/symbols/TextSymbol",
+            "esri/renderers/SimpleRenderer",
+            "esri/layers/LabelClass",
+
+            "dojo/domReady!"
+        ], function(Map, Extent, FeatureLayer,ArcGISDynamicMapServiceLayer,
+                    SimpleMarkerSymbol,SimpleLineSymbol, SimpleFillSymbol,
+                    TextSymbol, SimpleRenderer,LabelClass)
+        {
+            var bbox = new Extent({"xmin": -1940058, "ymin": -814715, "xmax": 1683105, "ymax": 1446096, "spatialReference": {"wkid": 102003}});
+
+            map = new Map("map", {
+                extent: bbox,
+                showLabels : true  //very important that this must be set to true!
+            });
+
+            //点符号
+            var sms = new SimpleMarkerSymbol({
+                "color": [0, 0, 255],
+                "size": 6,
+                "type": "esriSMS",
+                "style": "esriSMSCircle"
+            });
+            //面符号
+            var sfs = new SimpleFillSymbol({
+                "color": [0, 255, 0, 128],
+                "type": "esriSFS",
+                "style": "esriSFSSolid",
+                "outline": {
+                    "color": [128, 128, 128, 255],
+                    "width": 1,
+                    "type": "esriSLS",
+                    "style": "esriSLSSolid"
+                }
+            });
+            var citiesRenderer = new SimpleRenderer(sms);
+            var statesRenderer = new SimpleRenderer(sfs);
+
+            var statesUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2";
+            var states = new FeatureLayer(statesUrl);
+            states.setRenderer(statesRenderer);
+            map.addLayer(states);
+
+            var citiesUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0";
+            var citiesLayer = new FeatureLayer(citiesUrl,{
+                outFields: ["*"]
+            });
+            citiesLayer.setRenderer(citiesRenderer);
+
+            //动态标注
+            //"above-center", "above-left", "above-right", "below-center", "below-left", "below-right", "center-center", "center-left", "center-right"
+            var citiesLabelJson1 = {
+                "labelExpressionInfo": {"value": "名称：{areaname},人口：{pop2000}"},
+                "labelPlacement":"above-right",
+                "symbol":{
+                    "type": "esriTS",
+                    "color": [218,165,32],
+                    "font": {
+                        "family":"Microsoft YaHei",
+                        "size": 8
+                    }
+                }
+            };
+            var citiesLabelJson2 = {
+                "labelExpressionInfo": {"value": "人口：{pop2000}"},
+                "labelPlacement":"below-right",
+                "symbol":{
+                    "type": "esriTS",
+                    "color": [128,128,128],
+                    "font": {
+                        "family":"Microsoft YaHei",
+                        "size": 12
+                    }
+                }
+            }
+            var citiesLabel1 = new LabelClass(citiesLabelJson1);
+            var citiesLabel2 = new LabelClass(citiesLabelJson2);
+            citiesLayer.setLabelingInfo([citiesLabel1,citiesLabel2]);
+            citiesLayer.setShowLabels(true);
+
+            map.addLayer(citiesLayer);
+
+        });
+    </script>
+</head>
+<body>
+<div id="map"></div>
+</body>
+</html>
